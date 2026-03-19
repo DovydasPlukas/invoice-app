@@ -12,6 +12,7 @@
     "email": "email dev --dir ./src/emails"
   },
   "dependencies": {
+    "@clerk/localizations": "^4.2.2",
     "@clerk/nextjs": "^7.0.5",
     "@react-email/components": "^1.0.10",
     "class-variance-authority": "^0.7.1",

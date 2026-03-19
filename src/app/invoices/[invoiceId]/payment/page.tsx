@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 
 import { createPayment, updateStatusAction } from "@/app/actions";
 import { db } from "@/db";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 const stripe = new Stripe(String(process.env.STRIPE_API_SECRET));
 
@@ -35,11 +35,8 @@ export default async function InvoicePage({
   const isCanceled = status === "canceled";
   let isError = isSuccess && !sessionId;
 
-  console.log("isSuccess", isSuccess);
-  console.log("isCanceled", isCanceled);
-
   if (Number.isNaN(invoiceId)) {
-    throw new Error("Invalid Invoice ID");
+    throw new Error("Neteisingas sąskaitos ID");
   }
 
   if (isSuccess) {
@@ -53,6 +50,7 @@ export default async function InvoicePage({
       formData.append("id", String(invoiceId));
       formData.append("status", "paid");
       await updateStatusAction(formData);
+      redirect(`/invoices/${invoiceId}`);
     }
   }
 
@@ -86,19 +84,19 @@ export default async function InvoicePage({
       <Container>
         {isError && (
           <p className="bg-red-100 text-sm text-red-800 text-center px-3 py-2 rounded-lg mb-6">
-            Something went wrong, please try again!
+            Įvyko klaida, bandykite dar kartą!
           </p>
         )}
         {isCanceled && (
           <p className="bg-yellow-100 text-sm text-yellow-800 text-center px-3 py-2 rounded-lg mb-6">
-            Payment was canceled, please try again.
+            Mokėjimas atšauktas, bandykite dar kartą.
           </p>
         )}
         <div className="grid grid-cols-2">
           <div>
             <div className="flex justify-between mb-8">
               <h1 className="flex items-center gap-4 text-3xl font-semibold">
-                Invoice {invoice.id}
+                Sąskaita {invoice.id}
                 <Badge
                   className={cn(
                     "rounded-full capitalize",
@@ -113,48 +111,48 @@ export default async function InvoicePage({
               </h1>
             </div>
 
-            <p className="text-3xl mb-3">${(invoice.value / 100).toFixed(2)}</p>
+            <p className="text-3xl mb-3">{(invoice.value / 100).toFixed(2)} €</p>
 
             <p className="text-lg mb-8">{invoice.description}</p>
           </div>
           <div>
-            <h2 className="text-xl font-bold mb-4">Manage Invoice</h2>
+            <h2 className="text-xl font-bold mb-4">Valdyti sąskaitą</h2>
             {invoice.status === "open" && (
               <form action={createPayment}>
                 <input type="hidden" name="id" value={invoice.id} />
                 <Button className="flex gap-2 font-bold bg-green-700">
                   <CreditCard className="w-5 h-auto" />
-                  Pay Invoice
+                  Apmokėti sąskaitą
                 </Button>
               </form>
             )}
             {invoice.status === "paid" && (
               <p className="flex gap-2 items-center text-xl font-bold">
                 <Check className="w-8 h-auto bg-green-500 rounded-full text-white p-1" />
-                Invoice Paid
+                Sąskaita apmokėta
               </p>
             )}
           </div>
         </div>
 
-        <h2 className="font-bold text-lg mb-4">Billing Details</h2>
+        <h2 className="font-bold text-lg mb-4">Atsiskaitymo detalės</h2>
 
         <ul className="grid gap-2">
           <li className="flex gap-4">
             <strong className="block w-28 shrink-0 font-medium text-sm">
-              Invoice ID
+              Sąskaitos ID
             </strong>
             <span>{invoice.id}</span>
           </li>
           <li className="flex gap-4">
             <strong className="block w-28 shrink-0 font-medium text-sm">
-              Invoice Date
+              Sąskaitos data
             </strong>
-            <span>{new Date(invoice.createTs).toLocaleDateString()}</span>
+            <span>{new Date(invoice.createTs).toISOString().split('T')[0]}</span>
           </li>
           <li className="flex gap-4">
             <strong className="block w-28 shrink-0 font-medium text-sm">
-              Billing Name
+              Atsiskaitymo pavadinimas
             </strong>
             <span>{invoice.customer.name}</span>
           </li>

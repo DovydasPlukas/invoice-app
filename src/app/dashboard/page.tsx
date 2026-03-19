@@ -28,7 +28,7 @@ export default async function Home() {
     redirect("/sign-in");
   }
 
-  // Displaying all invoices for public demo
+  // Displaying all invoices
 
   const results: Array<{
     invoices: typeof Invoices.$inferSelect;
@@ -63,25 +63,25 @@ export default async function Home() {
     <main className="h-full">
       <Container>
         <div className="flex justify-between mb-6">
-          <h1 className="text-3xl font-semibold">Invoices</h1>
+          <h1 className="text-3xl font-semibold">Sąskaitos faktūros</h1>
           <p>
-            <Button className="inline-flex gap-2" variant="ghost" asChild>
+            <Button className="inline-flex gap-2 bg-slate-200" variant="ghost" asChild>
               <Link href="/invoices/new">
                 <CirclePlus className="h-4 w-4" />
-                Create Invoice
+                Sukurti sąskaitos faktūra
               </Link>
             </Button>
           </p>
         </div>
         <Table>
-          <TableCaption>A list of your recent invoices.</TableCaption>
+          <TableCaption>Naujai sukurtų sąskaitos faktūrų sąrašas.</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-25 p-4">Date</TableHead>
-              <TableHead className="p-4">Customer</TableHead>
-              <TableHead className="p-4">Email</TableHead>
-              <TableHead className="text-center p-4">Status</TableHead>
-              <TableHead className="text-right p-4">Value</TableHead>
+              <TableHead className="w-25 p-4">Data</TableHead>
+              <TableHead className="p-4">Klientas</TableHead>
+              <TableHead className="p-4">El. paštas</TableHead>
+              <TableHead className="text-center p-4">Statusas</TableHead>
+              <TableHead className="text-right p-4">Kaina</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -129,7 +129,7 @@ export default async function Home() {
                       href={`/invoices/${result.id}`}
                       className="block p-4 font-semibold"
                     >
-                      ${(result.value / 100).toFixed(2)}
+                      {(result.value / 100).toFixed(2)} €
                     </Link>
                   </TableCell>
                 </TableRow>

@@ -5,11 +5,7 @@ const Footer = () => {
     <footer className="mt-12 mb-8">
       <Container className="flex justify-between gap-4">
         <p className="text-sm">
-          Invoicipedia &copy; {new Date().getFullYear()}
-        </p>
-        <p className="text-sm">
-          Created by Colby Fayock with Next.js, Xata, and Clerk
-          Followed the tutorial*
+          Solidus Kodas &copy; {new Date().getFullYear()}
         </p>
       </Container>
     </footer>

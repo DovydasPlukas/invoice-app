@@ -1,110 +1,41 @@
-import {
-  Body,
-  Button,
-  Container,
-  Head,
-  Heading,
-  Hr,
-  Html,
-  Link,
-  Preview,
-  Section,
-  Text,
-} from "@react-email/components";
+import { Resend } from "resend";
 
-interface InvoiceCreatedEmailProps {
-  invoiceId: number;
-}
+const resend = new Resend(process.env.RESEND_API_KEY!);
 
-const baseUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+export const sendInvoiceEmail = async (
+  email: string,
+  invoiceId: number,
+) => {
+  const invoiceLink = `http://localhost:3000/invoices/${invoiceId}/payment`;
 
-export const InvoiceCreatedEmail = ({
-  invoiceId,
-}: InvoiceCreatedEmailProps) => (
-  <Html>
-    <Head />
-    <Preview>Your login code for Linear</Preview>
-    <Body style={main}>
-      <Container style={container}>
-        <Heading style={heading}>New Invoice {invoiceId}</Heading>
-        <Text style={paragraph}>
-          You have a new invoice due for Space Jelly.
-        </Text>
-        <Section style={buttonContainer}>
-          <Button
-            style={button}
-            href={`${baseUrl}/invoices/${invoiceId}/payment`}
-          >
-            Pay Invoice
-          </Button>
-        </Section>
-        <Hr style={hr} />
-        <Link href="https://spacejelly.dev" style={reportLink}>
-          Space Jelly
-        </Link>
-      </Container>
-    </Body>
-  </Html>
-);
 
-InvoiceCreatedEmail.PreviewProps = {
-  invoiceId: 1234,
-} as InvoiceCreatedEmailProps;
+  const emailLayout = (content: string) => `
+    <div style="background-color: #ffffff; font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif; padding: 20px 0 48px;">
+      <div style="margin: 0 auto; max-width: 560px; padding: 20px 0 48px;">
+        ${content}
+      </div>
+    </div>
+  `;
 
-export default InvoiceCreatedEmail;
+  await resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: [email],
+    subject: `Nauja sąskaitos faktūra #${invoiceId}`,
+    html: emailLayout(`
+      <h2 style="font-size: 24px; letter-spacing: -0.5px; line-height: 1.3; font-weight: 400; color: #484848; padding: 17px 0 0;">
+        Nauja sąskaita faktūra #${invoiceId}
+      </h2>
 
-const main = {
-  backgroundColor: "#ffffff",
-  fontFamily:
-    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif',
-};
+      <p style="margin: 0 0 15px; font-size: 15px; line-height: 1.4; color: #3c4149;">
+        Jums sukurta nauja sąskaitos faktūra.
+      </p>
 
-const container = {
-  margin: "0 auto",
-  padding: "20px 0 48px",
-  maxWidth: "560px",
-};
-
-const heading = {
-  fontSize: "24px",
-  letterSpacing: "-0.5px",
-  lineHeight: "1.3",
-  fontWeight: "400",
-  color: "#484848",
-  padding: "17px 0 0",
-};
-
-const paragraph = {
-  margin: "0 0 15px",
-  fontSize: "15px",
-  lineHeight: "1.4",
-  color: "#3c4149",
-};
-
-const buttonContainer = {
-  padding: "27px 0 27px",
-};
-
-const button = {
-  backgroundColor: "#5e6ad2",
-  borderRadius: "3px",
-  fontWeight: "600",
-  color: "#fff",
-  fontSize: "15px",
-  textDecoration: "none",
-  textAlign: "center" as const,
-  display: "block",
-  padding: "11px 23px",
-};
-
-const reportLink = {
-  fontSize: "14px",
-  color: "#b4becc",
-};
-
-const hr = {
-  borderColor: "#dfe1e4",
-  margin: "42px 0 26px",
+      <div style="padding: 27px 0 27px;">
+        <a href="${invoiceLink}" 
+           style="background-color: #5e6ad2; border-radius: 3px; font-weight: 600; color: #fff; font-size: 15px; text-decoration: none; text-align: center; display: block; padding: 11px 23px;">
+          Apmokėti sąskaitą
+        </a>
+      </div>
+    `),
+  });
 };

@@ -8,6 +8,7 @@ import {
 } from "@clerk/nextjs";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import { LogIn } from 'lucide-react';
 
 const Header = () => {
   const { isSignedIn } = useAuth();
@@ -17,9 +18,9 @@ const Header = () => {
       <Container>
         <div className="flex justify-between items-center gap-4">
           <div className="flex items-center gap-4">
-            <p className="font-bold">
+            <p className="transition-all duration-300 hover:scale-105 font-bold">
               <Link href={isSignedIn ? "/dashboard" : "/"}>
-                Invoicipedia
+                Sąskaitos faktūra
               </Link>
             </p>
             <span className="text-slate-300">/</span>
@@ -31,7 +32,9 @@ const Header = () => {
           </div>
           <div>
             {!isSignedIn && (
-              <SignInButton />
+              <SignInButton>
+                <LogIn className="transition-all duration-300 hover:scale-105 cursor-pointer" />
+              </SignInButton>
             )}
             {isSignedIn && (
               <UserButton />

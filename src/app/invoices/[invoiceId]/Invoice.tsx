@@ -1,6 +1,6 @@
 "use client";
 import { ChevronDown, CreditCard, Ellipsis, Trash2 } from "lucide-react";
-import { useOptimistic } from "react";
+import { useOptimistic, useTransition } from "react";
 
 import Container from "@/components/Container";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,7 @@ interface InvoiceProps {
 }
 
 export default function Invoice({ invoice }: InvoiceProps) {
+  const [isPending, startTransition] = useTransition();
   const [currentStatus, setCurrentStatus] = useOptimistic(
     invoice.status,
     (_state, newStatus) => {
@@ -42,21 +43,26 @@ export default function Invoice({ invoice }: InvoiceProps) {
     },
   );
 
-  async function handleOnUpdateStatus(formData: FormData) {
+  async function handleOnUpdateStatus(newStatus: string) {
     const originalStatus = currentStatus;
-    setCurrentStatus(formData.get("status"));
-    try {
-      await updateStatusAction(formData);
-    } catch {
-      setCurrentStatus(originalStatus);
-    }
+    startTransition(async () => {
+      setCurrentStatus(newStatus);
+      try {
+        const formData = new FormData();
+        formData.append("id", String(invoice.id));
+        formData.append("status", newStatus);
+        await updateStatusAction(formData);
+      } catch {
+        setCurrentStatus(originalStatus);
+      }
+    });
   }
   return (
     <main className="w-full h-full">
       <Container>
         <div className="flex justify-between mb-8">
           <h1 className="flex items-center gap-4 text-3xl font-semibold">
-            Invoice {invoice.id}
+            Sąskaita {invoice.id}
             <Badge
               className={cn(
                 "rounded-full capitalize",
@@ -78,19 +84,20 @@ export default function Invoice({ invoice }: InvoiceProps) {
                   variant="outline"
                   type="button"
                 >
-                  Change Status
+                  Keisti statusą
                   <ChevronDown className="w-4 h-auto" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 {AVAILABLE_STATUSES.map((status) => {
                   return (
-                    <DropdownMenuItem key={status.id}>
-                      <form action={handleOnUpdateStatus}>
-                        <input type="hidden" name="id" value={invoice.id} />
-                        <input type="hidden" name="status" value={status.id} />
-                        <button type="submit">{status.label}</button>
-                      </form>
+                    <DropdownMenuItem
+                      key={status.id}
+                      onSelect={() => {
+                        handleOnUpdateStatus(status.id);
+                      }}
+                    >
+                      {status.label}
                     </DropdownMenuItem>
                   );
                 })}
@@ -105,7 +112,7 @@ export default function Invoice({ invoice }: InvoiceProps) {
                     variant="outline"
                     type="button"
                   >
-                    <span className="sr-only">More Options</span>
+                    <span className="sr-only">Daugiau parinkčių</span>
                     <Ellipsis className="w-4 h-auto" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -114,7 +121,7 @@ export default function Invoice({ invoice }: InvoiceProps) {
                     <DialogTrigger asChild>
                       <button className="flex items-center gap-2" type="submit">
                         <Trash2 className="w-4 h-auto" />
-                        Delete Invoice
+                        Ištrinti
                       </button>
                     </DialogTrigger>
                   </DropdownMenuItem>
@@ -125,7 +132,7 @@ export default function Invoice({ invoice }: InvoiceProps) {
                       className="flex items-center gap-2"
                     >
                       <CreditCard className="w-4 h-auto" />
-                      Payment
+                      Mokėjimas
                     </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -134,11 +141,11 @@ export default function Invoice({ invoice }: InvoiceProps) {
               <DialogContent className="bg-white">
                 <DialogHeader>
                   <DialogTitle className="text-2xl">
-                    Delete Invoice?
+                    Ištrinti sąskaita?
                   </DialogTitle>
                   <DialogDescription>
-                    This action cannot be undone. This will permanently delete
-                    your invoice and remove your data from our servers.
+                    Šis veiksmas negali būti atšauktas. Tai visam laikui ištrins
+                    jūsų sąskaita ir pašalins jūsų duomenis iš mūsų serverių.
                   </DialogDescription>
                   <DialogFooter>
                     <form
@@ -152,7 +159,7 @@ export default function Invoice({ invoice }: InvoiceProps) {
                         type="submit"
                       >
                         <Trash2 className="w-4 h-auto" />
-                        Delete Invoice
+                        Ištrinti sąskaita
                       </Button>
                     </form>
                   </DialogFooter>
@@ -162,34 +169,36 @@ export default function Invoice({ invoice }: InvoiceProps) {
           </div>
         </div>
 
-        <p className="text-3xl mb-3">${(invoice.value / 100).toFixed(2)}</p>
+        <p className="text-3xl mb-3">{(invoice.value / 100).toFixed(2)} €</p>
 
         <p className="text-lg mb-8">{invoice.description}</p>
 
-        <h2 className="font-bold text-lg mb-4">Billing Details</h2>
+        <h2 className="font-bold text-lg mb-4">Atsiskaitymo detalės</h2>
 
         <ul className="grid gap-2">
           <li className="flex gap-4">
             <strong className="block w-28 shrink-0 font-medium text-sm">
-              Invoice ID
+              Sąskaitos ID
             </strong>
             <span>{invoice.id}</span>
           </li>
           <li className="flex gap-4">
             <strong className="block w-28 shrink-0 font-medium text-sm">
-              Invoice Date
+              Sąskaitos data
             </strong>
-            <span>{new Date(invoice.createTs).toLocaleDateString()}</span>
+            <span>
+              {new Date(invoice.createTs).toISOString().split('T')[0]}
+            </span>
           </li>
           <li className="flex gap-4">
             <strong className="block w-28 shrink-0 font-medium text-sm">
-              Billing Name
+              Atsiskaitymo pavadinimas
             </strong>
             <span>{invoice.customer.name}</span>
           </li>
           <li className="flex gap-4">
             <strong className="block w-28 shrink-0 font-medium text-sm">
-              Billing Email
+              Atsiskaitymo el. paštas
             </strong>
             <span>{invoice.customer.email}</span>
           </li>

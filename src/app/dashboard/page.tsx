@@ -29,35 +29,29 @@ export default async function Home() {
   }
 
   // Displaying all invoices
+  let invoices: Array<
+    typeof Invoices.$inferSelect & { customer: typeof Customers.$inferSelect }
+  > = [];
+  let dbError: string | null = null;
 
-  const results: Array<{
-    invoices: typeof Invoices.$inferSelect;
-    customers: typeof Customers.$inferSelect;
-  }> = await db
-    .select()
-    .from(Invoices)
-    .innerJoin(Customers, eq(Invoices.customerId, Customers.id));
+  try {
+    const results: Array<{
+      invoices: typeof Invoices.$inferSelect;
+      customers: typeof Customers.$inferSelect;
+    }> = await db
+      .select()
+      .from(Invoices)
+      .innerJoin(Customers, eq(Invoices.customerId, Customers.id));
 
-  // if (orgId) {
-  //   results = await db
-  //     .select()
-  //     .from(Invoices)
-  //     .innerJoin(Customers, eq(Invoices.customerId, Customers.id))
-  //     .where(eq(Invoices.organizationId, orgId));
-  // } else {
-  //   results = await db
-  //     .select()
-  //     .from(Invoices)
-  //     .innerJoin(Customers, eq(Invoices.customerId, Customers.id))
-  //     .where(and(eq(Invoices.userId, userId), isNull(Invoices.organizationId)));
-  // }
-
-  const invoices = results?.map(({ invoices, customers }) => {
-    return {
+    invoices = results.map(({ invoices, customers }) => ({
       ...invoices,
       customer: customers,
-    };
-  });
+    }));
+  } catch (err) {
+    console.error("[Dashboard] Failed to fetch invoices:", err);
+    dbError =
+      err instanceof Error ? err.message : "Nežinoma duomenų bazės klaida";
+  }
 
   return (
     <main className="h-full">
@@ -73,6 +67,15 @@ export default async function Home() {
             </Button>
           </p>
         </div>
+        {dbError && (
+          <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p className="font-semibold mb-1">
+              Nepavyko įkelti sąskaitų faktūrų
+            </p>
+            <p className="font-mono text-xs text-red-500 break-all">{dbError}</p>
+          </div>
+        )}
+
         <Table>
           <TableCaption>Naujai sukurtų sąskaitos faktūrų sąrašas.</TableCaption>
           <TableHeader>

@@ -10,6 +10,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { headers } from "next/headers";
 
 import { sendInvoiceEmail } from "@/emails/invoice-created";
+import { sendInvoicePaidEmail } from "@/emails/invoice-paid";
 
 // import { revalidatePath } from "next/cache";
 
@@ -66,6 +67,20 @@ export async function updateStatusAction(formData: FormData) {
 
   const id = formData.get("id") as string;
   const status = formData.get("status") as Status;
+  const invoiceId = Number.parseInt(id);
+
+  // Fetch invoice and customer details before updating
+  const [invoiceData] = await db
+    .select({
+      value: Invoices.value,
+      description: Invoices.description,
+      name: Customers.name,
+      email: Customers.email,
+    })
+    .from(Invoices)
+    .innerJoin(Customers, eq(Invoices.customerId, Customers.id))
+    .where(eq(Invoices.id, invoiceId))
+    .limit(1);
 
   if (orgId) {
     await db
@@ -73,7 +88,7 @@ export async function updateStatusAction(formData: FormData) {
       .set({ status })
       .where(
         and(
-          eq(Invoices.id, Number.parseInt(id)),
+          eq(Invoices.id, invoiceId),
           eq(Invoices.organizationId, orgId)
         )
       );
@@ -83,12 +98,24 @@ export async function updateStatusAction(formData: FormData) {
       .set({ status })
       .where(
         and(
-          eq(Invoices.id, Number.parseInt(id)),
+          eq(Invoices.id, invoiceId),
           eq(Invoices.userId, userId),
           isNull(Invoices.organizationId)
         )
       );
   }
+
+  // Send email when invoice is paid
+  if (status === "paid" && invoiceData) {
+    await sendInvoicePaidEmail({
+      email: invoiceData.email,
+      invoiceId,
+      amount: invoiceData.value,
+      description: invoiceData.description,
+      customerName: invoiceData.name,
+    });
+  }
+
   // Optionally, revalidate the invoice page to reflect the updated status
   // revalidatePath(`/invoices/${id}`);
 }
@@ -122,6 +149,11 @@ export async function deleteInvoiceAction(formData: FormData) {
 
   redirect("/dashboard");
 }
+/** Stripe checkout creation
+ * 1. Retrieve invoice details from the database using the provided ID.
+ * 2. Create a Stripe checkout session with the invoice details (amount, description, ID).
+ * 3. Redirect the user to the Stripe checkout page.
+ */
 
 export async function createPayment(formData: FormData) {
   const { userId } = await auth();
@@ -149,7 +181,7 @@ export async function createPayment(formData: FormData) {
     line_items: [
       {
         price_data: {
-          currency: "usd",
+          currency: "EUR",
           product_data: {
             name: `Invoice #${id}`,
             description: result.description,
@@ -160,6 +192,7 @@ export async function createPayment(formData: FormData) {
       },
     ],
     mode: "payment",
+    locale: "lt",
     metadata: {
       invoiceId: String(id),
     },

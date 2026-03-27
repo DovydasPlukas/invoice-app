@@ -50,7 +50,7 @@ export default async function InvoicePage({
       formData.append("id", String(invoiceId));
       formData.append("status", "paid");
       await updateStatusAction(formData);
-      redirect(`/invoices/${invoiceId}`);
+      redirect(`/invoices/${invoiceId}/payment`);
     }
   }
 

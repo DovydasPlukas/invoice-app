@@ -1,12 +1,13 @@
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
+const domain = process.env.NEXT_PUBLIC_APP_URL;
 
 export const sendInvoiceEmail = async (
   email: string,
   invoiceId: number,
 ) => {
-  const invoiceLink = `http://localhost:3000/invoices/${invoiceId}/payment`;
+  const invoiceLink = `${domain}/invoices/${invoiceId}/payment`;
 
 
   const emailLayout = (content: string) => `

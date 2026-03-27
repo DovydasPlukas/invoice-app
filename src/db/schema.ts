@@ -18,24 +18,42 @@ export const statusEnum = pgEnum(
   statuses as [Status, ...Array<Status>],
 );
 
-export const Invoices = pgTable("invoices", {
-  id: serial("id").primaryKey().notNull(),
-  createTs: timestamp("createTs").defaultNow().notNull(),
-  value: integer("value").notNull(),
-  description: text("description").notNull(),
-  userId: text("userId").notNull(),
-  organizationId: text("organizationId"),
-  customerId: integer("customerId")
-    .notNull()
-    .references(() => Customers.id),
-  status: statusEnum("status").notNull(),
-});
+export const customerTypeEnum = pgEnum("customer_type", ["physical", "legal"]);
 
 export const Customers = pgTable("customers", {
   id: serial("id").primaryKey().notNull(),
   createTs: timestamp("createTs").defaultNow().notNull(),
-  name: text("name").notNull(),
+
+  customerType: customerTypeEnum("customer_type").notNull(),
+
+  // Physical person
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+
+  // Legal entity
+  companyName: text("company_name"),
+  companyCode: text("company_code"),
+
+  // Shared
   email: text("email").notNull(),
-  userId: text("userId").notNull(),
-  organizationId: text("organizationId"),
+  phone: text("phone"),
+  address: text("address"),
+
+  userId: text("user_id").notNull(),
+  organizationId: text("organization_id"),
+});
+
+export const Invoices = pgTable("invoices", {
+  id: serial("id").primaryKey().notNull(),
+  createTs: timestamp("createTs").defaultNow().notNull(),
+  value: integer("value").notNull(), // stored in cents
+  description: text("description").notNull(),
+  userId: text("user_id").notNull(),
+  organizationId: text("organization_id"),
+
+  customerId: integer("customer_id")
+    .notNull()
+    .references(() => Customers.id),
+
+  status: statusEnum("status").notNull(),
 });

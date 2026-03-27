@@ -9,7 +9,13 @@ export const sendInvoiceEmail = async (
 ) => {
   const invoiceLink = `${domain}/invoices/${invoiceId}/payment`;
 
-
+/**Send email (created invoice)
+ * 
+ * To notify costumer about created invoice.
+ * Sends email with link to invoice payment page.
+ * 
+ * (Disabled)
+ */
   const emailLayout = (content: string) => `
     <div style="background-color: #ffffff; font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif; padding: 20px 0 48px;">
       <div style="margin: 0 auto; max-width: 560px; padding: 20px 0 48px;">

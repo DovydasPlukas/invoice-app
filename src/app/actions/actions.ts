@@ -8,8 +8,8 @@ import { headers } from "next/headers";
 
 import { db } from "@/db";
 import { Invoices, Customers, InvoiceItems, type Status } from "@/db/schema";
-import { sendInvoicePaidEmail } from "@/emails/invoice-paid";
 import { revalidatePath } from "next/cache";
+import { sendPaidInvoiceEmailAction } from "./send-email";
 
 const stripe = new Stripe(String(process.env.STRIPE_API_SECRET));
 
@@ -67,35 +67,21 @@ export async function updateStatusAction(formData: FormData) {
         )
       );
   }
-
   // Send email if status is "paid"
   if (status === "paid") {
-    const amountInCents = Math.round(Number(invoiceData.total) * 100);
-
-    await sendInvoicePaidEmail({
-      email: invoiceData.email,
-      invoiceId: id,
-      amount: amountInCents,
-
-
-      customerType: invoiceData.customerType,
-      firstName: invoiceData.firstName,
-      lastName: invoiceData.lastName,
-      companyName: invoiceData.companyName,
-      companyCode: invoiceData.companyCode,
-      phone: invoiceData.phone,
-      address: invoiceData.address,
-
-      invoiceDate: invoiceData.createTs,
-    });
+    try {
+      await sendPaidInvoiceEmailAction(id);
+    } catch (error) {
+      console.error("Nepavyko išsiųsti apmokėjimo patvirtinimo el. laiško:", error);
+    }
   }
+
   // Revaliduojamas TIK jei tai rankinis veiksmas (pvz. iš dropdown meniu)
   // Jei tai automatinis Stripe nukreipimas, revalidatePath čia nevykdomas (išvengiama klaidos)
   if (isManual) {
     revalidatePath(`/invoices/${id}`, "page");
   }
 }
-
 export async function deleteInvoiceAction(formData: FormData) {
   const { userId, orgId } = await auth();
   if (!userId) return;

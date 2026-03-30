@@ -1,21 +1,18 @@
 import { Resend } from "resend";
-import { SELLER_INFO } from "@/data/seller";
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
 type CustomerType = "physical" | "legal";
 
-/**
- * NOTE: does not work as intended.
- */
-
 export interface InvoiceCreatedStripeEmailProps {
   email: string;
   invoiceId: number;
+  invoiceNumber: string;
   amount: number;
   description: string;
   stripeCheckoutUrl: string;
 
+  // Pirkėjas
   customerType: CustomerType;
   firstName?: string | null;
   lastName?: string | null;
@@ -24,12 +21,24 @@ export interface InvoiceCreatedStripeEmailProps {
   phone?: string | null;
   address?: string | null;
 
+  // Pardavėjas
+  sellerType: CustomerType;
+  sellerFirstName?: string | null;
+  sellerLastName?: string | null;
+  sellerCompanyName?: string | null;
+  sellerCompanyCode?: string | null;
+  sellerPhone?: string | null;
+  sellerAddress?: string | null;
+  sellerEmail?: string | null;
+
   invoiceDate: Date | string;
+  pdfAttachment?: Buffer | string; // PDF failas
 }
 
 export const sendInvoiceEmail = async ({
   email,
   invoiceId,
+  invoiceNumber,
   amount,
   description,
   stripeCheckoutUrl,
@@ -40,9 +49,17 @@ export const sendInvoiceEmail = async ({
   companyCode,
   phone,
   address,
+  sellerType,
+  sellerFirstName,
+  sellerLastName,
+  sellerCompanyName,
+  sellerCompanyCode,
+  sellerPhone,
+  sellerAddress,
+  sellerEmail,
   invoiceDate,
 }: InvoiceCreatedStripeEmailProps) => {
-  const domain = process.env.NEXT_PUBLIC_APP_URL;
+  const domain = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const invoiceLink = `${domain}/invoices/${invoiceId}/payment`;
 
   const formattedAmount = (amount / 100).toFixed(2);
@@ -52,6 +69,11 @@ export const sendInvoiceEmail = async ({
     customerType === "physical"
       ? `${firstName ?? ""} ${lastName ?? ""}`.trim()
       : companyName ?? "Klientas";
+
+  const sellerName =
+    sellerType === "physical"
+      ? `${sellerFirstName ?? ""} ${sellerLastName ?? ""}`.trim()
+      : sellerCompanyName ?? "Pardavėjas";
 
   const customerExtra =
     customerType === "legal" && companyCode
@@ -85,14 +107,14 @@ export const sendInvoiceEmail = async ({
   await resend.emails.send({
     from: "onboarding@resend.dev",
     to: [email],
-    subject: `Nauja sąskaitos faktūra #${invoiceId}`,
+    subject: `Nauja sąskaitos faktūra ${invoiceNumber}`,
     html: emailLayout(`
       <h1 style="margin: 0 0 8px; font-size: 28px; line-height: 1.2; color: #111827;">
         Nauja sąskaita faktūra
       </h1>
 
       <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.6; color: #4b5563;">
-        Jums sukurta nauja sąskaitos faktūra <strong>#${invoiceId}</strong>. Prašome ją apmokėti per nurodytą laiką.
+        Jums sukurta nauja sąskaitos faktūra <strong>${invoiceNumber}</strong>. Prašome ją apmokėti.
       </p>
 
       <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
@@ -101,7 +123,7 @@ export const sendInvoiceEmail = async ({
         </h2>
 
         <p style="margin: 6px 0; font-size: 14px; color: #3c4149;">
-          <strong>Sąskaitos Nr.:</strong> #${invoiceId}
+          <strong>Sąskaitos Nr.:</strong> ${invoiceNumber}
         </p>
         <p style="margin: 6px 0; font-size: 14px; color: #3c4149;">
           <strong>Data:</strong> ${formattedDate}
@@ -120,20 +142,12 @@ export const sendInvoiceEmail = async ({
             Pardavėjas
           </h2>
           <p style="margin: 6px 0; font-size: 14px; color: #3c4149;">
-            <strong>Pavadinimas:</strong> ${SELLER_INFO.companyName}
+            <strong>${sellerType === "physical" ? "Vardas, pavardė" : "Pavadinimas"}:</strong> ${sellerName}
           </p>
-          <p style="margin: 6px 0; font-size: 14px; color: #3c4149;">
-            <strong>Įmonės kodas:</strong> ${SELLER_INFO.companyCode}
-          </p>
-          <p style="margin: 6px 0; font-size: 14px; color: #3c4149;">
-            <strong>Adresas:</strong> ${SELLER_INFO.address}
-          </p>
-          <p style="margin: 6px 0; font-size: 14px; color: #3c4149;">
-            <strong>Telefonas:</strong> ${SELLER_INFO.phone}
-          </p>
-          <p style="margin: 6px 0; font-size: 14px; color: #3c4149;">
-            <strong>El. paštas:</strong> ${SELLER_INFO.email}
-          </p>
+          ${sellerCompanyCode ? `<p style="margin: 6px 0; font-size: 14px; color: #3c4149;"><strong>Įmonės kodas:</strong> ${sellerCompanyCode}</p>` : ""}
+          ${sellerAddress ? `<p style="margin: 6px 0; font-size: 14px; color: #3c4149;"><strong>Adresas:</strong> ${sellerAddress}</p>` : ""}
+          ${sellerPhone ? `<p style="margin: 6px 0; font-size: 14px; color: #3c4149;"><strong>Telefonas:</strong> ${sellerPhone}</p>` : ""}
+          ${sellerEmail ? `<p style="margin: 6px 0; font-size: 14px; color: #3c4149;"><strong>El. paštas:</strong> ${sellerEmail}</p>` : ""}
         </div>
 
         <div style="background: #ffffff; border-left: 4px solid #10b981; padding-left: 16px;">

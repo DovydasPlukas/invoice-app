@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, CreditCard, DownloadIcon, Ellipsis, Trash2 } from "lucide-react";
+import { ChevronDown, CreditCard, DownloadIcon, Ellipsis, Trash2, Mail } from "lucide-react";
 import { useOptimistic, useTransition } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,8 @@ import {
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
-import { updateStatusAction, deleteInvoiceAction } from "@/app/actions/actions";
+import { updateStatusAction, deleteInvoiceAction} from "@/app/actions/actions";
+import { sendInvoiceEmailAction } from "@/app/actions/send-email";
 import { AVAILABLE_STATUSES } from "@/data/invoices";
 
 import type { Customers, Invoices, InvoiceItems } from "@/db/schema";
@@ -31,6 +32,10 @@ import { Separator } from "@/components/ui/separator";
 import Container from "@/components/Container";
 
 import type { InvoiceFormData } from "@/data/invoice-types";
+import { toast } from "sonner";
+
+import { generateInvoicePdf } from "@/lib/generate-pdf";
+
 type InvoiceStatus = "open" | "paid" | "void" | "uncollectible";
 
 interface InvoiceProps {
@@ -63,21 +68,18 @@ export default function Invoice({ invoice }: InvoiceProps) {
 
   const total = parseFloat(invoice.total.toString());
 
-  // Wrapper function that imports the library ONLY when needed
-  const handleDownloadPDF = async () => {
-    // This dynamic import prevents the library from being loaded during SSR
-    const { generatePDF } = await import("@/lib/generate-pdf");
-
-    const pdfData: InvoiceFormData = {
+const handleDownload = async () => {
+  try {
+    const invoiceData: InvoiceFormData = {
       invoiceNumber: invoice.invoiceNumber,
-      date: invoice.date,
+      date: invoice.date || "",
       taxEnabled: invoice.taxEnabled ?? false,
-      taxRate: typeof invoice.taxRate === "string" ? parseFloat(invoice.taxRate) : (invoice.taxRate ?? 0),
-      items: invoice.items.map((item) => ({
+      taxRate: Number(invoice.taxRate) || 0,
+      items: invoice.items.map(item => ({
         id: item.id.toString(),
         description: item.description,
-        quantity: parseFloat(item.quantity.toString()),
-        amount: parseFloat(item.amount.toString()),
+        quantity: Number(item.quantity),
+        amount: Number(item.amount)
       })),
       from: {
         personType: invoice.sellerType as "physical" | "legal",
@@ -98,21 +100,17 @@ export default function Invoice({ invoice }: InvoiceProps) {
         email: invoice.customer.email ?? "",
         phone: invoice.customer.phone ?? "",
         address: invoice.customer.address ?? "",
-      },
+      }
     };
 
-    await generatePDF(pdfData);
-  };
-
-  const sellerDisplayName =
-    invoice.sellerType === "physical"
-      ? `${invoice.sellerFirstName ?? ""} ${invoice.sellerLastName ?? ""}`.trim()
-      : invoice.sellerCompanyName ?? "Nenurodytas";
-
-  const buyerDisplayName =
-    invoice.customer.customerType === "physical"
-      ? `${invoice.customer.firstName ?? ""} ${invoice.customer.lastName ?? ""}`.trim()
-      : invoice.customer.companyName ?? "Nenurodytas klientas";
+    await generateInvoicePdf(invoiceData);
+    
+    toast.success("PDF failas paruoštas");
+  } catch (error) {
+    console.error("PDF klaida:", error);
+    toast.error("Nepavyko sugeneruoti PDF");
+  }
+};
 
   async function handleOnUpdateStatus(newStatus: InvoiceStatus) {
     const originalStatus = currentStatus;
@@ -128,6 +126,29 @@ export default function Invoice({ invoice }: InvoiceProps) {
       }
     });
   }
+
+  // Aktyvuojamas el. laiško siuntimas
+  function handleSendEmail() {
+    startTransition(async () => {
+      try {
+        await sendInvoiceEmailAction(invoice.id);
+        toast("El. laiškas sėkmingai išsiųstas!");
+      } catch (error) {
+        console.error("Nepavyko išsiųsti el. laiško", error);
+        toast("Įvyko klaida siunčiant el. laišką.");
+      }
+    });
+  }
+
+  const sellerDisplayName =
+    invoice.sellerType === "physical"
+      ? `${invoice.sellerFirstName ?? ""} ${invoice.sellerLastName ?? ""}`.trim()
+      : invoice.sellerCompanyName ?? "Nenurodytas";
+
+  const buyerDisplayName =
+    invoice.customer.customerType === "physical"
+      ? `${invoice.customer.firstName ?? ""} ${invoice.customer.lastName ?? ""}`.trim()
+      : invoice.customer.companyName ?? "Nenurodytas klientas";
 
   return (
     <main className="h-full">
@@ -171,12 +192,18 @@ export default function Invoice({ invoice }: InvoiceProps) {
             <Dialog>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="default">
+                  <Button variant="default" disabled={isPending}>
                     <Ellipsis className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={handleDownloadPDF} className="gap-2 cursor-pointer">
+                  {/* Pridėtas naujas pasirinkimas laiško siuntimui */}
+                  <DropdownMenuItem onClick={handleSendEmail} className="gap-2 cursor-pointer">
+                    <Mail className="h-4 w-4" />
+                    Išsiųsti el. paštą
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem onClick={handleDownload} className="gap-2 cursor-pointer">
                     <DownloadIcon className="h-4 w-4" />
                     Atsisiųsti PDF
                   </DropdownMenuItem>
@@ -237,6 +264,7 @@ export default function Invoice({ invoice }: InvoiceProps) {
                 <div className="text-sm text-muted-foreground">
                   {invoice.sellerType === "legal" && <p>Įm. kodas: {invoice.sellerCompanyCode}</p>}
                   <p>{invoice.sellerEmail}</p>
+                  <p>{invoice.sellerPhone}</p>
                   <p>{invoice.sellerAddress}</p>
                 </div>
               </div>
@@ -246,6 +274,7 @@ export default function Invoice({ invoice }: InvoiceProps) {
                 <div className="text-sm text-muted-foreground">
                   {invoice.customer.customerType === "legal" && <p>Įm. kodas: {invoice.customer.companyCode}</p>}
                   <p>{invoice.customer.email}</p>
+                  <p>{invoice.customer.phone}</p>
                   <p>{invoice.customer.address}</p>
                 </div>
               </div>

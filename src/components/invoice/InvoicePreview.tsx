@@ -33,13 +33,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import { generatePDF } from "@/lib/generate-pdf";
+import { generateInvoicePdf } from "@/lib/generate-pdf";
 import { updateStatusAction, deleteInvoiceAction } from "@/app/actions/actions";
 import { AVAILABLE_STATUSES } from "@/data/invoices";
 import { cn } from "@/lib/utils";
 
 import type { InvoiceFormData } from "@/data/invoice-types";
 import type { Status } from "@/db/schema";
+import { toast } from "sonner";
 
 interface Props {
   form: InvoiceFormData;
@@ -77,6 +78,16 @@ export function InvoicePreview({
 
   const fmt = (n: number) =>
     n.toLocaleString("lt-LT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const handleDownload = async () => {
+    try {
+      await generateInvoicePdf(form);
+      toast.success("PDF sugeneruotas");
+    } catch (error) {
+      console.error(error);
+      toast.error("Nepavyko sugeneruoti PDF");
+    }
+  };
 
   async function handleUpdateStatus(newStatus: Status) {
     if (!savedId) return;
@@ -163,7 +174,7 @@ export function InvoicePreview({
                     Redaguoti (sukurti naują)
                   </DropdownMenuItem>
                   
-                  <DropdownMenuItem onClick={() => generatePDF(form)} className="gap-2 cursor-pointer">
+                  <DropdownMenuItem onClick={handleDownload} className="gap-2 cursor-pointer">
                     <DownloadIcon className="size-4" />
                     Atsisiųsti PDF
                   </DropdownMenuItem>

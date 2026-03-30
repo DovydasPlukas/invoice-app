@@ -1,265 +1,321 @@
 "use client";
 
-import Form from "next/form";
-import { type SyntheticEvent, useState } from "react";
-import Container from "@/components/Container";
-import SubmitButton from "@/components/SubmitButton";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import dynamic from "next/dynamic";
+import { useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { createAction } from "@/app/actions";
+  FileTextIcon,
+  UsersIcon,
+  ListIcon,
+  CheckCircle2Icon,
+  ChevronRightIcon,
+  ChevronLeftIcon,
+  Loader2Icon,
+} from "lucide-react";
+import { InvoiceDetailsTab } from "@/components/invoice/InvoiceDetailsTab";
+import { FromToTab } from "@/components/invoice/FromToTab";
+import { InvoiceItemsTab } from "@/components/invoice/InvoiceItemsTab";
+import { SELLER_INFO } from "@/data/seller";
+import { saveInvoice } from "@/app/actions/save-invoice";
+import type { InvoiceFormData, PartyInfo } from "@/data/invoice-types";
+import { cn } from "@/lib/utils";
 
-type CustomerType = "physical" | "legal";
+const InvoicePreview = dynamic(() => import("@/components/invoice/InvoicePreview").then(mod => ({ default: mod.InvoicePreview })), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center min-h-screen">Loading...</div>,
+});
 
-export default function Home() {
-  const [state, setState] = useState<"ready" | "pending">("ready");
-  const [customerType, setCustomerType] = useState<CustomerType>("physical");
+function generateInvoiceId() {
+  const seq = Math.floor(Math.random() * 90000) + 10000;
+  return `INV-${seq}${Date.now()}`;
+}
 
-  const [formData, setFormData] = useState({
-    customerType: "physical" as CustomerType,
-    firstName: "",
-    lastName: "",
-    companyName: "",
-    companyCode: "",
-    email: "",
-    phone: "",
-    address: "",
-    value: "",
-    description: "",
-  });
+function todayISO() {
+  return new Date().toISOString().split("T")[0];
+}
 
-  const isFormValid = () => {
-    if (!formData.email || !formData.value || !formData.description) {
-      return false;
-    }
+const defaultParty = (): PartyInfo => ({
+  personType: "physical",
+  firstName: "",
+  lastName: "",
+  companyName: "",
+  companyCode: "",
+  email: "",
+  phone: "",
+  address: "",
+});
 
-    if (customerType === "physical") {
-      return !!formData.firstName && !!formData.lastName;
-    } else {
-      return !!formData.companyName && !!formData.companyCode;
+const sellerParty = (): PartyInfo => ({
+  personType: "legal",
+  firstName: "",
+  lastName: "",
+  companyName: SELLER_INFO.companyName,
+  companyCode: SELLER_INFO.companyCode,
+  email: SELLER_INFO.email,
+  phone: SELLER_INFO.phone,
+  address: SELLER_INFO.address,
+});
+
+const initialForm = (): InvoiceFormData => ({
+  invoiceNumber: generateInvoiceId(),
+  date: todayISO(),
+  from: sellerParty(),
+  to: defaultParty(),
+  items: [],
+  taxEnabled: false,
+  taxRate: 21,
+});
+
+const TABS = [
+  { id: "details", label: "Sąskaita", icon: FileTextIcon },
+  { id: "parties", label: "Nuo / Kam", icon: UsersIcon },
+  { id: "items", label: "Eilutės", icon: ListIcon },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
+export default function InvoiceCreatePage() {
+  const [activeTab, setActiveTab] = useState<TabId>("details");
+  const [form, setForm] = useState<InvoiceFormData>(initialForm);
+  const [saving, setSaving] = useState(false);
+  const [savedId, setSavedId] = useState<number | undefined>();
+  const [showPreview, setShowPreview] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const tabIndex = TABS.findIndex((t) => t.id === activeTab);
+
+  const isDetailsValid = !!form.invoiceNumber && !!form.date;
+
+  const isPartyValid = (p: PartyInfo) => {
+    if (!p.email) return false;
+    if (p.personType === "physical") return !!p.firstName && !!p.lastName;
+    return !!p.companyName && !!p.companyCode;
+  };
+
+  const isPartiesValid = isPartyValid(form.from) && isPartyValid(form.to);
+  const isItemsValid =
+    form.items.length > 0 && form.items.every((i) => !!i.description && i.quantity > 0);
+
+  const tabValidity: Record<TabId, boolean> = {
+    details: isDetailsValid,
+    parties: isPartiesValid,
+    items: isItemsValid,
+  };
+
+  const canGoNext = tabValidity[activeTab];
+  const isLastTab = tabIndex === TABS.length - 1;
+  const isFirstTab = tabIndex === 0;
+
+  const goNext = () => {
+    if (!isLastTab) setActiveTab(TABS[tabIndex + 1].id);
+  };
+  const goPrev = () => {
+    if (!isFirstTab) setActiveTab(TABS[tabIndex - 1].id);
+  };
+
+  const handleSubmit = async () => {
+    if (!isDetailsValid || !isPartiesValid || !isItemsValid) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const result = await saveInvoice(form);
+      setSavedId(result.id);
+    } catch (err) {
+      // If DB is not configured, still show preview
+      console.error("Failed to save invoice:", err);
+      setSaveError("Nepavyko išsaugoti duomenų bazėje, bet galite atsisiųsti PDF.");
+    } finally {
+      setSaving(false);
+      setShowPreview(true);
     }
   };
 
-  async function handleOnSubmit(event: SyntheticEvent) {
-    if (state === "pending") {
-      event.preventDefault();
-      return;
-    }
-    setState("pending");
+  const handleNew = () => {
+    setShowPreview(false);
+    setSavedId(undefined);
+    setSaveError(null);
+    setForm(initialForm());
+    setActiveTab("details");
+  };
+
+  if (showPreview) {
+    return (
+      <InvoicePreview
+        form={form}
+        savedId={savedId}
+        onBack={() => setShowPreview(false)}
+        onNew={handleNew}
+      />
+    );
   }
 
-  const handleCustomerTypeChange = (newType: string) => {
-    const type = newType as CustomerType;
-    setCustomerType(type);
-    setFormData((prev) => ({ ...prev, customerType: type }));
-  };
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const digitsOnly = e.target.value.replace(/\D/g, "");
-    if (digitsOnly.length <= 12) {
-      setFormData((prev) => ({ ...prev, phone: digitsOnly }));
-    }
-  };
-
   return (
-    <main className="h-full">
-      <Container>
-        <div className="flex justify-between mb-6">
-          <h1 className="text-3xl font-semibold">Sukurti sąskaitos faktūrą</h1>
+    <main className="min-h-screen">
+      <div className="max-w-3xl mx-auto px-4 py-10">
+        {/* Page header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-balance">Sukurti sąskaitą faktūrą</h1>
+          <p className="text-muted-foreground mt-1">
+            Užpildykite visus laukus ir sukurkite sąskaitą
+          </p>
         </div>
 
-        <Form
-          action={createAction}
-          onSubmit={handleOnSubmit}
-          className="grid gap-4 max-w-xs"
-        >
-          {/* Customer Type Selection */}
-          <div>
-            <Label htmlFor="customerType" className="block font-semibold text-sm mb-2">
-              Kliento tipas
-            </Label>
+        {/* Step indicators */}
+        <div className="flex items-center gap-2 mb-6">
+          {TABS.map((tab, idx) => {
+            const Icon = tab.icon;
+            const isActive = tab.id === activeTab;
+            const isDone = tabValidity[tab.id] && tabIndex > idx;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors cursor-pointer",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : isDone
+                    ? "bg-green-100 text-green-700 hover:bg-green-200"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                )}
+              >
+                <Icon className="size-3.5" />
+                {tab.label}
+                {isDone && <CheckCircle2Icon className="size-3.5" />}
+              </button>
+            );
+          })}
+        </div>
 
-            <input type="hidden" name="customerType" value={customerType} />
+        {/* Card with tabs */}
+        <Card>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)}>
+            <TabsList className="hidden">
+              {TABS.map((t) => (
+                <TabsTrigger key={t.id} value={t.id}>
+                  {t.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-            <Select value={customerType} onValueChange={handleCustomerTypeChange}>
-              <SelectTrigger id="customerType">
-                <SelectValue placeholder="Pasirinkite kliento tipą" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="physical">Fizinis asmuo</SelectItem>
-                <SelectItem value="legal">Juridinis asmuo</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Physical Person Fields */}
-          {customerType === "physical" && (
-            <>
-              <div>
-                <Label htmlFor="firstName" className="block font-semibold text-sm mb-2">
-                  Vardas
-                </Label>
-                <Input
-                  id="firstName"
-                  name="firstName"
-                  type="text"
-                  placeholder="Jonas"
-                  value={formData.firstName}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, firstName: e.target.value }))
+            {/* Details Tab */}
+            <TabsContent value="details" className="mt-0">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <FileTextIcon className="size-5" />
+                  Sąskaitos detalės
+                </CardTitle>
+                <CardDescription>Sąskaitos numeris ir data</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <InvoiceDetailsTab
+                  invoiceNumber={form.invoiceNumber}
+                  date={form.date}
+                  onChange={(field, value) =>
+                    setForm((prev) => ({ ...prev, [field]: value }))
                   }
                 />
-              </div>
+              </CardContent>
+            </TabsContent>
 
-              <div>
-                <Label htmlFor="lastName" className="block font-semibold text-sm mb-2">
-                  Pavardė
-                </Label>
-                <Input
-                  id="lastName"
-                  name="lastName"
-                  type="text"
-                  placeholder="Varaitis"
-                  value={formData.lastName}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, lastName: e.target.value }))
+            {/* From / To Tab */}
+            <TabsContent value="parties" className="mt-0">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <UsersIcon className="size-5" />
+                  Nuo / Kam
+                </CardTitle>
+                <CardDescription>
+                  Pardavėjo ir pirkėjo informacija
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FromToTab
+                  from={form.from}
+                  to={form.to}
+                  onFromChange={(from) => setForm((prev) => ({ ...prev, from }))}
+                  onToChange={(to) => setForm((prev) => ({ ...prev, to }))}
+                />
+              </CardContent>
+            </TabsContent>
+
+            {/* Items Tab */}
+            <TabsContent value="items" className="mt-0">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <ListIcon className="size-5" />
+                  Sąskaitos eilutės
+                </CardTitle>
+                <CardDescription>
+                  Pridėkite prekes ar paslaugas
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <InvoiceItemsTab
+                  items={form.items}
+                  taxEnabled={form.taxEnabled}
+                  taxRate={form.taxRate}
+                  onItemsChange={(items) => setForm((prev) => ({ ...prev, items }))}
+                  onTaxChange={(taxEnabled) =>
+                    setForm((prev) => ({ ...prev, taxEnabled }))
+                  }
+                  onTaxRateChange={(taxRate) =>
+                    setForm((prev) => ({ ...prev, taxRate }))
                   }
                 />
-              </div>
-            </>
-          )}
+              </CardContent>
+            </TabsContent>
+          </Tabs>
+        </Card>
 
-          {/* Legal Entity Fields */}
-          {customerType === "legal" && (
-            <>
-              <div>
-                <Label htmlFor="companyName" className="block font-semibold text-sm mb-2">
-                  Įmonės pavadinimas
-                </Label>
-                <Input
-                  id="companyName"
-                  name="companyName"
-                  type="text"
-                  placeholder="UAB Pavyzdinė Įmonė"
-                  value={formData.companyName}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, companyName: e.target.value }))
-                  }
-                />
-              </div>
+        {/* Save error */}
+        {saveError && (
+          <p className="text-sm text-destructive mt-3">{saveError}</p>
+        )}
 
-              <div>
-                <Label htmlFor="companyCode" className="block font-semibold text-sm mb-2">
-                  Įmonės kodas
-                </Label>
-                <Input
-                  id="companyCode"
-                  name="companyCode"
-                  type="text"
-                  placeholder="123456789"
-                  value={formData.companyCode}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, companyCode: e.target.value }))
-                  }
-                />
-              </div>
-            </>
-          )}
+        {/* Navigation buttons */}
+        <div className="flex justify-between mt-6">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={goPrev}
+            disabled={isFirstTab}
+            className="gap-2 cursor-pointer"
+          >
+            <ChevronLeftIcon className="size-4 cursor-pointer" />
+            Atgal
+          </Button>
 
-          {/* Common Fields */}
-          <div>
-            <Label htmlFor="email" className="block font-semibold text-sm mb-2">
-              El. paštas
-            </Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="jonas@pavyzdys.lt"
-              value={formData.email}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, email: e.target.value }))
-              }
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="phone" className="block font-semibold text-sm mb-2">
-              Telefonas <span className="text-xs text-gray-500">(nebūtina)</span>
-            </Label>
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              placeholder="370600123456"
-              value={formData.phone}
-              onChange={handlePhoneChange}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="address" className="block font-semibold text-sm mb-2">
-              Adresas <span className="text-xs text-gray-500">(nebūtina)</span>
-            </Label>
-            <Input
-              id="address"
-              name="address"
-              type="text"
-              placeholder="Gedimino g. 1, Vilnius"
-              value={formData.address}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, address: e.target.value }))
-              }
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="value" className="block font-semibold text-sm mb-2">
-              Suma
-            </Label>
-            <Input
-              id="value"
-              name="value"
-              type="number"
-              step="any"
-              placeholder="9.99"
-              value={formData.value}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, value: e.target.value }))
-              }
-            />
-          </div>
-
-          <div>
-            <Label
-              htmlFor="description"
-              className="block font-semibold text-sm mb-2"
+          {!isLastTab ? (
+            <Button
+              type="button"
+              onClick={goNext}
+              disabled={!canGoNext}
+              className="gap-2 cursor-pointer"
             >
-              Prekės/Paslaugos pavadinimas
-            </Label>
-            <Textarea
-              id="description"
-              name="description"
-              placeholder="Interneto puslapio dizaino ir kūrimo paslaugos projektui x"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, description: e.target.value }))
-              }
-            />
-          </div>
-
-          <div>
-            <SubmitButton disabled={!isFormValid()} />
-          </div>
-        </Form>
-      </Container>
+              Toliau
+              <ChevronRightIcon className="size-4" />
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!isItemsValid || saving}
+              className="gap-2"
+            >
+              {saving ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <CheckCircle2Icon className="size-4" />
+              )}
+              {saving ? "Išsaugoma..." : "Peržiūrėti ir išsaugoti"}
+            </Button>
+          )}
+        </div>
+      </div>
     </main>
   );
 }

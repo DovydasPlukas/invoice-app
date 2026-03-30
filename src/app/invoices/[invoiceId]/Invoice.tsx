@@ -1,9 +1,8 @@
 "use client";
 
-import { ChevronDown, CreditCard, Ellipsis, Trash2 } from "lucide-react";
+import { ChevronDown, CreditCard, DownloadIcon, Ellipsis, Trash2 } from "lucide-react";
 import { useOptimistic, useTransition } from "react";
-
-import Container from "@/components/Container";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -20,47 +19,105 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Customers, Invoices } from "@/db/schema";
-import { cn } from "@/lib/utils";
-
 import { Button } from "@/components/ui/button";
-
-import { deleteInvoiceAction, updateStatusAction } from "@/app/actions";
-import { AVAILABLE_STATUSES } from "@/data/invoices";
 import Link from "next/link";
+
+import { updateStatusAction, deleteInvoiceAction } from "@/app/actions/actions";
+import { AVAILABLE_STATUSES } from "@/data/invoices";
+
+import type { Customers, Invoices, InvoiceItems } from "@/db/schema";
+import { cn } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
+import Container from "@/components/Container";
+
+import type { InvoiceFormData } from "@/data/invoice-types";
+type InvoiceStatus = "open" | "paid" | "void" | "uncollectible";
 
 interface InvoiceProps {
   invoice: typeof Invoices.$inferSelect & {
     customer: typeof Customers.$inferSelect;
+    items: typeof InvoiceItems.$inferSelect[];
+    status: InvoiceStatus;
   };
 }
 
 export default function Invoice({ invoice }: InvoiceProps) {
   const [isPending, startTransition] = useTransition();
 
-  const [currentStatus, setCurrentStatus] = useOptimistic(
+  const [currentStatus, setCurrentStatus] = useOptimistic<InvoiceStatus, InvoiceStatus>(
     invoice.status,
-    (_state, newStatus) => {
-      return String(newStatus);
-    }
+    (_state, newStatus) => newStatus
   );
 
-  const customerDisplayName =
+  const fmt = (num: number | string) =>
+    typeof num === "string" ? parseFloat(num).toFixed(2) : num.toFixed(2);
+
+  const subtotal = invoice.items.reduce(
+    (sum, item) => sum + parseFloat(item.lineTotal.toString()),
+    0
+  );
+
+  const taxAmount = invoice.taxEnabled
+    ? parseFloat(invoice.taxAmount?.toString() || "0")
+    : 0;
+
+  const total = parseFloat(invoice.total.toString());
+
+  // Wrapper function that imports the library ONLY when needed
+  const handleDownloadPDF = async () => {
+    // This dynamic import prevents the library from being loaded during SSR
+    const { generatePDF } = await import("@/lib/generate-pdf");
+
+    const pdfData: InvoiceFormData = {
+      invoiceNumber: invoice.invoiceNumber,
+      date: invoice.date,
+      taxEnabled: invoice.taxEnabled ?? false,
+      taxRate: typeof invoice.taxRate === "string" ? parseFloat(invoice.taxRate) : (invoice.taxRate ?? 0),
+      items: invoice.items.map((item) => ({
+        id: item.id.toString(),
+        description: item.description,
+        quantity: parseFloat(item.quantity.toString()),
+        amount: parseFloat(item.amount.toString()),
+      })),
+      from: {
+        personType: invoice.sellerType as "physical" | "legal",
+        firstName: invoice.sellerFirstName ?? "",
+        lastName: invoice.sellerLastName ?? "",
+        companyName: invoice.sellerCompanyName ?? "",
+        companyCode: invoice.sellerCompanyCode ?? "",
+        email: invoice.sellerEmail ?? "",
+        phone: invoice.sellerPhone ?? "",
+        address: invoice.sellerAddress ?? "",
+      },
+      to: {
+        personType: invoice.customer.customerType as "physical" | "legal",
+        firstName: invoice.customer.firstName ?? "",
+        lastName: invoice.customer.lastName ?? "",
+        companyName: invoice.customer.companyName ?? "",
+        companyCode: invoice.customer.companyCode ?? "",
+        email: invoice.customer.email ?? "",
+        phone: invoice.customer.phone ?? "",
+        address: invoice.customer.address ?? "",
+      },
+    };
+
+    await generatePDF(pdfData);
+  };
+
+  const sellerDisplayName =
+    invoice.sellerType === "physical"
+      ? `${invoice.sellerFirstName ?? ""} ${invoice.sellerLastName ?? ""}`.trim()
+      : invoice.sellerCompanyName ?? "Nenurodytas";
+
+  const buyerDisplayName =
     invoice.customer.customerType === "physical"
       ? `${invoice.customer.firstName ?? ""} ${invoice.customer.lastName ?? ""}`.trim()
       : invoice.customer.companyName ?? "Nenurodytas klientas";
 
-  // const customerTypeLabel =
-  //   invoice.customer.customerType === "physical"
-  //     ? "Fizinis asmuo"
-  //     : "Juridinis asmuo";
-
-  async function handleOnUpdateStatus(newStatus: string) {
+  async function handleOnUpdateStatus(newStatus: InvoiceStatus) {
     const originalStatus = currentStatus;
-
     startTransition(async () => {
       setCurrentStatus(newStatus);
-
       try {
         const formData = new FormData();
         formData.append("id", String(invoice.id));
@@ -73,14 +130,14 @@ export default function Invoice({ invoice }: InvoiceProps) {
   }
 
   return (
-    <main className="w-full h-full">
+    <main className="h-full">
       <Container>
-        <div className="flex justify-between mb-8">
+        <div className="flex justify-between items-center mb-6">
           <h1 className="flex items-center gap-4 text-3xl font-semibold">
-            Sąskaita {invoice.id}
+            Sąskaita {invoice.invoiceNumber}
             <Badge
               className={cn(
-                "rounded-full capitalize",
+                "rounded-full capitalize px-3 py-1",
                 currentStatus === "open" && "bg-blue-500",
                 currentStatus === "paid" && "bg-green-600",
                 currentStatus === "void" && "bg-zinc-700",
@@ -91,161 +148,150 @@ export default function Invoice({ invoice }: InvoiceProps) {
             </Badge>
           </h1>
 
-          <div className="flex gap-4">
+          <div className="flex gap-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  className="flex items-center gap-2"
-                  variant="outline"
-                  type="button"
-                  disabled={isPending}
-                >
+                <Button variant="outline" disabled={isPending}>
                   Keisti statusą
-                  <ChevronDown className="w-4 h-auto" />
+                  <ChevronDown className="ml-2 h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {AVAILABLE_STATUSES.map((status) => {
-                  return (
-                    <DropdownMenuItem
-                      key={status.id}
-                      onSelect={() => {
-                        handleOnUpdateStatus(status.id);
-                      }}
-                    >
-                      {status.label}
-                    </DropdownMenuItem>
-                  );
-                })}
+              <DropdownMenuContent align="end">
+                {AVAILABLE_STATUSES.map((status) => (
+                  <DropdownMenuItem
+                    key={status.id}
+                    onSelect={() => handleOnUpdateStatus(status.id as InvoiceStatus)}
+                  >
+                    {status.label}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
 
             <Dialog>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    className="flex items-center gap-2"
-                    variant="outline"
-                    type="button"
-                  >
-                    <span className="sr-only">Daugiau parinkčių</span>
-                    <Ellipsis className="w-4 h-auto" />
+                  <Button variant="default">
+                    <Ellipsis className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleDownloadPDF} className="gap-2 cursor-pointer">
+                    <DownloadIcon className="h-4 w-4" />
+                    Atsisiųsti PDF
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuItem asChild>
+                    <Link href={`/invoices/${invoice.id}/payment`} className="flex items-center gap-2 cursor-pointer">
+                      <CreditCard className="h-4 w-4" /> Mokėjimas
+                    </Link>
+                  </DropdownMenuItem>
+                  
+                  <Separator className="my-1" />
+
+                  <DropdownMenuItem className="text-destructive focus:text-destructive">
                     <DialogTrigger asChild>
-                      <button className="flex items-center gap-2" type="button">
-                        <Trash2 className="w-4 h-auto" />
-                        Ištrinti
+                      <button className="flex w-full items-center gap-2 cursor-pointer" type="button">
+                        <Trash2 className="h-4 w-4" /> Ištrinti
                       </button>
                     </DialogTrigger>
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem asChild>
-                    <Link
-                      href={`/invoices/${invoice.id}/payment`}
-                      className="flex items-center gap-2"
-                    >
-                      <CreditCard className="w-4 h-auto" />
-                      Mokėjimas
-                    </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 
               <DialogContent className="bg-white">
                 <DialogHeader>
-                  <DialogTitle className="text-2xl">
-                    Ištrinti sąskaitą?
-                  </DialogTitle>
-                  <DialogDescription>
-                    Šis veiksmas negali būti atšauktas. Tai visam laikui ištrins
-                    jūsų sąskaitą ir pašalins jos duomenis iš sistemos.
-                  </DialogDescription>
-                  <DialogFooter>
-                    <form
-                      className="flex justify-center"
-                      action={deleteInvoiceAction}
-                    >
-                      <input type="hidden" name="id" value={invoice.id} />
-                      <Button
-                        variant="destructive"
-                        className="flex items-center gap-2"
-                        type="submit"
-                      >
-                        <Trash2 className="w-4 h-auto" />
-                        Ištrinti sąskaitą
-                      </Button>
-                    </form>
-                  </DialogFooter>
+                  <DialogTitle>Ištrinti sąskaitą?</DialogTitle>
+                  <DialogDescription>Šis veiksmas negali būti atšauktas.</DialogDescription>
                 </DialogHeader>
+                <DialogFooter>
+                  <form action={deleteInvoiceAction}>
+                    <input type="hidden" name="id" value={invoice.id} />
+                    <Button variant="destructive" type="submit">Ištrinti</Button>
+                  </form>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
         </div>
 
-        <p className="text-3xl mb-3">{(invoice.value / 100).toFixed(2)} €</p>
-        <p className="text-lg mb-8">{invoice.description}</p>
+        <Card className="border-t-primary shadow-lg">
+          <CardContent className="space-y-8 p-8">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-primary text-2xl font-bold tracking-tight">SĄSKAITA FAKTŪRA</h2>
+                <p className="mt-1 font-mono text-sm text-muted-foreground">Nr. {invoice.invoiceNumber}</p>
+              </div>
+              <div className="text-right text-sm">
+                <p className="font-medium">Data</p>
+                <p className="text-muted-foreground">{invoice.date}</p>
+              </div>
+            </div>
 
-        <h2 className="font-bold text-lg mb-4">Kliento / atsiskaitymo detalės</h2>
+            <Separator />
 
-        <ul className="grid gap-3">
-          <li className="flex gap-4">
-            <strong className="block w-40 shrink-0 font-medium text-sm">
-              Sąskaitos ID
-            </strong>
-            <span>{invoice.id}</span>
-          </li>
+            <div className="grid grid-cols-2 gap-12">
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pardavėjas</p>
+                <p className="text-lg font-bold">{sellerDisplayName}</p>
+                <div className="text-sm text-muted-foreground">
+                  {invoice.sellerType === "legal" && <p>Įm. kodas: {invoice.sellerCompanyCode}</p>}
+                  <p>{invoice.sellerEmail}</p>
+                  <p>{invoice.sellerAddress}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pirkėjas</p>
+                <p className="text-lg font-bold">{buyerDisplayName}</p>
+                <div className="text-sm text-muted-foreground">
+                  {invoice.customer.customerType === "legal" && <p>Įm. kodas: {invoice.customer.companyCode}</p>}
+                  <p>{invoice.customer.email}</p>
+                  <p>{invoice.customer.address}</p>
+                </div>
+              </div>
+            </div>
 
-          <li className="flex gap-4">
-            <strong className="block w-40 shrink-0 font-medium text-sm">
-              Sąskaitos data
-            </strong>
-            <span>{new Date(invoice.createTs).toISOString().split("T")[0]}</span>
-          </li>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="pb-3 text-left">Aprašymas</th>
+                  <th className="w-20 text-right pb-3">Kiekis</th>
+                  <th className="w-28 text-right pb-3">Kaina</th>
+                  <th className="w-28 text-right pb-3">Suma</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {invoice.items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="py-4">{item.description}</td>
+                    <td className="py-4 text-right">{parseFloat(item.quantity.toString())}</td>
+                    <td className="py-4 text-right">{fmt(item.amount)} €</td>
+                    <td className="py-4 text-right font-semibold">{fmt(item.lineTotal)} €</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-          <li className="flex gap-4">
-            <strong className="block w-40 shrink-0 font-medium text-sm">
-              Klientas
-            </strong>
-            <span>{customerDisplayName}</span>
-          </li>
-
-          {invoice.customer.customerType === "legal" && invoice.customer.companyCode && (
-            <li className="flex gap-4">
-              <strong className="block w-40 shrink-0 font-medium text-sm">
-                Įmonės kodas
-              </strong>
-              <span>{invoice.customer.companyCode}</span>
-            </li>
-          )}
-
-          <li className="flex gap-4">
-            <strong className="block w-40 shrink-0 font-medium text-sm">
-              El. paštas
-            </strong>
-            <span>{invoice.customer.email}</span>
-          </li>
-
-          {invoice.customer.phone && (
-            <li className="flex gap-4">
-              <strong className="block w-40 shrink-0 font-medium text-sm">
-                Telefonas
-              </strong>
-              <span>{invoice.customer.phone}</span>
-            </li>
-          )}
-
-          {invoice.customer.address && (
-            <li className="flex gap-4">
-              <strong className="block w-40 shrink-0 font-medium text-sm">
-                Adresas
-              </strong>
-              <span>{invoice.customer.address}</span>
-            </li>
-          )}
-        </ul>
+            <div className="flex justify-end pt-4">
+              <div className="w-full max-w-70 space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span>Suma be mokesčių</span>
+                  <span className="font-medium">{fmt(subtotal)} €</span>
+                </div>
+                {invoice.taxEnabled && (
+                  <div className="flex justify-between text-sm">
+                    <span>PVM ({invoice.taxRate}%)</span>
+                    <span>{fmt(taxAmount)} €</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between border-t pt-2 font-bold text-xl text-primary">
+                  <span>Iš viso</span>
+                  <span>{fmt(total)} €</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </Container>
     </main>
   );

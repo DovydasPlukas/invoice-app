@@ -9,10 +9,12 @@ type CustomerType = "physical" | "legal";
  * NOTE: does not work as intended.
  */
 
-export interface InvoicePaidEmailProps {
+export interface InvoiceCreatedStripeEmailProps {
   email: string;
   invoiceId: number;
   amount: number;
+  description: string;
+  stripeCheckoutUrl: string;
 
   customerType: CustomerType;
   firstName?: string | null;
@@ -25,10 +27,12 @@ export interface InvoicePaidEmailProps {
   invoiceDate: Date | string;
 }
 
-export const sendInvoicePaidEmail = async ({
+export const sendInvoiceEmail = async ({
   email,
   invoiceId,
   amount,
+  description,
+  stripeCheckoutUrl,
   customerType,
   firstName,
   lastName,
@@ -37,7 +41,7 @@ export const sendInvoicePaidEmail = async ({
   phone,
   address,
   invoiceDate,
-}: InvoicePaidEmailProps) => {
+}: InvoiceCreatedStripeEmailProps) => {
   const domain = process.env.NEXT_PUBLIC_APP_URL;
   const invoiceLink = `${domain}/invoices/${invoiceId}/payment`;
 
@@ -81,14 +85,14 @@ export const sendInvoicePaidEmail = async ({
   await resend.emails.send({
     from: "onboarding@resend.dev",
     to: [email],
-    subject: `Sąskaita faktūra #${invoiceId} apmokėta`,
+    subject: `Nauja sąskaitos faktūra #${invoiceId}`,
     html: emailLayout(`
       <h1 style="margin: 0 0 8px; font-size: 28px; line-height: 1.2; color: #111827;">
-        Mokėjimas gautas
+        Nauja sąskaita faktūra
       </h1>
 
       <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.6; color: #4b5563;">
-        Informuojame, kad jūsų sąskaita faktūra <strong>#${invoiceId}</strong> buvo sėkmingai apmokėta.
+        Jums sukurta nauja sąskaitos faktūra <strong>#${invoiceId}</strong>. Prašome ją apmokėti per nurodytą laiką.
       </p>
 
       <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
@@ -106,7 +110,7 @@ export const sendInvoicePaidEmail = async ({
           <strong>Suma:</strong> ${formattedAmount} €
         </p>
         <p style="margin: 6px 0; font-size: 14px; color: #3c4149;">
-          <strong>Prekė / paslauga:</strong> 
+          <strong>Prekė / paslauga:</strong> ${description}
         </p>
       </div>
 
@@ -148,7 +152,11 @@ export const sendInvoicePaidEmail = async ({
         </div>
       </div>
 
-      <div style="padding: 12px 0 8px;">
+      <div style="padding: 12px 0 8px; display: flex; gap: 12px; flex-wrap: wrap;">
+        <a href="${stripeCheckoutUrl}" 
+           style="background-color: #5e6ad2; border-radius: 8px; font-weight: 600; color: #fff; font-size: 15px; text-decoration: none; text-align: center; display: inline-block; padding: 12px 20px;">
+          Apmokėti sąskaitą
+        </a>
         <a href="${invoiceLink}" 
            style="background-color: #111827; border-radius: 8px; font-weight: 600; color: #fff; font-size: 15px; text-decoration: none; text-align: center; display: inline-block; padding: 12px 20px;">
           Peržiūrėti sąskaitą
@@ -156,7 +164,7 @@ export const sendInvoicePaidEmail = async ({
       </div>
 
       <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af; line-height: 1.6;">
-        Šis el. laiškas buvo išsiųstas automatiškai po sėkmingo apmokėjimo.
+        Šis el. laiškas buvo išsiųstas automatiškai. Jei turite klausimų, susisiekite su pardavėju.
       </p>
     `),
   });

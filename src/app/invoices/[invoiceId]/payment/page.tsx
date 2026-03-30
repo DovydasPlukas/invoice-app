@@ -1,17 +1,16 @@
 import { eq } from "drizzle-orm";
 import { Check, Circle, CreditCard, X } from "lucide-react";
 import Stripe from "stripe";
+import { notFound, redirect } from "next/navigation";
 
 import Container from "@/components/Container";
 import { Badge } from "@/components/ui/badge";
-import { Customers, Invoices } from "@/db/schema";
-import { cn } from "@/lib/utils";
-
 import { Button } from "@/components/ui/button";
 
-import { createPayment, updateStatusAction } from "@/app/actions";
+import { createPayment, updateStatusAction } from "@/app/actions/actions";
 import { db } from "@/db";
-import { notFound, redirect } from "next/navigation";
+import { Customers, Invoices, InvoiceItems } from "@/db/schema";
+import { cn } from "@/lib/utils";
 
 const stripe = new Stripe(String(process.env.STRIPE_API_SECRET));
 
@@ -23,12 +22,13 @@ interface InvoicePageProps {
   }>;
 }
 
-export default async function InvoicePage({
+export default async function InvoicePaymentPage({
   params,
   searchParams,
 }: InvoicePageProps) {
   const { invoiceId: invoiceIdParam } = await params;
   const { session_id: sessionId, status } = await searchParams;
+
   const invoiceId = Number.parseInt(invoiceIdParam);
 
   if (Number.isNaN(invoiceId)) {
@@ -50,6 +50,7 @@ export default async function InvoicePage({
       formData.append("id", String(invoiceId));
       formData.append("status", "paid");
       await updateStatusAction(formData);
+
       redirect(`/invoices/${invoiceId}/payment`);
     }
   }
@@ -57,19 +58,14 @@ export default async function InvoicePage({
   const [result] = await db
     .select({
       id: Invoices.id,
+      invoiceNumber: Invoices.invoiceNumber,
       status: Invoices.status,
-      createTs: Invoices.createTs,
-      description: Invoices.description,
-      value: Invoices.value,
-
+      date: Invoices.date,
+      total: Invoices.total,
       customerType: Customers.customerType,
       firstName: Customers.firstName,
       lastName: Customers.lastName,
       companyName: Customers.companyName,
-      companyCode: Customers.companyCode,
-      email: Customers.email,
-      phone: Customers.phone,
-      address: Customers.address,
     })
     .from(Invoices)
     .innerJoin(Customers, eq(Invoices.customerId, Customers.id))
@@ -80,148 +76,147 @@ export default async function InvoicePage({
     notFound();
   }
 
+  const items = await db
+    .select({
+      id: InvoiceItems.id,
+      description: InvoiceItems.description,
+      quantity: InvoiceItems.quantity,
+      lineTotal: InvoiceItems.lineTotal,
+    })
+    .from(InvoiceItems)
+    .where(eq(InvoiceItems.invoiceId, invoiceId));
+
   const customerDisplayName =
     result.customerType === "physical"
       ? `${result.firstName ?? ""} ${result.lastName ?? ""}`.trim()
       : result.companyName ?? "Nenurodytas klientas";
 
-  // const customerTypeLabel =
-  //   result.customerType === "physical"
-  //     ? "Fizinis asmuo"
-  //     : "Juridinis asmuo";
+  const fmt = (num: number | string) =>
+    typeof num === "string" ? parseFloat(num).toFixed(2) : num.toFixed(2);
 
   return (
     <main className="w-full h-full">
       <Container>
-        {isError && (
-          <p className="bg-red-100 text-sm text-red-800 text-center px-3 py-2 rounded-lg mb-6">
-            Įvyko klaida, bandykite dar kartą.
-          </p>
-        )}
+        <div className="max-w-3xl mx-auto py-10">
+          {isError && (
+            <p className="bg-red-100 text-sm text-red-800 text-center px-3 py-2 rounded-lg mb-6">
+              Įvyko klaida, bandykite dar kartą.
+            </p>
+          )}
 
-        {isCanceled && (
-          <p className="bg-yellow-100 text-sm text-yellow-800 text-center px-3 py-2 rounded-lg mb-6">
-            Mokėjimas atšauktas, bandykite dar kartą.
-          </p>
-        )}
+          {isCanceled && (
+            <p className="bg-yellow-100 text-sm text-yellow-800 text-center px-3 py-2 rounded-lg mb-6">
+              Mokėjimas atšauktas, bandykite dar kartą.
+            </p>
+          )}
 
-        <div className="grid md:grid-cols-2 gap-10 mb-10">
-          <div>
-            <div className="flex justify-between mb-8">
-              <h1 className="flex items-center gap-4 text-3xl font-semibold">
-                Sąskaita {result.id}
-                <Badge
-                  className={cn(
-                    "rounded-full capitalize",
-                    result.status === "open" && "bg-blue-500",
-                    result.status === "paid" && "bg-green-600",
-                    result.status === "void" && "bg-zinc-700",
-                    result.status === "uncollectible" && "bg-red-600"
-                  )}
-                >
-                  {result.status}
-                </Badge>
-              </h1>
+          <div className="rounded-2xl border bg-white shadow-sm p-8 space-y-8">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Mokėjimas</p>
+                <h1 className="text-3xl font-semibold">
+                  Sąskaita {result.invoiceNumber}
+                </h1>
+                <p className="text-sm text-muted-foreground mt-2">
+                  ID: {result.id}
+                </p>
+              </div>
+
+              <Badge
+                className={cn(
+                  "rounded-full capitalize w-fit",
+                  result.status === "open" && "bg-blue-500",
+                  result.status === "paid" && "bg-green-600",
+                  result.status === "void" && "bg-zinc-700",
+                  result.status === "uncollectible" && "bg-red-600"
+                )}
+              >
+                {result.status}
+              </Badge>
             </div>
 
-            <p className="text-3xl mb-3">{(result.value / 100).toFixed(2)} €</p>
-            <p className="text-lg mb-8">{result.description}</p>
-          </div>
+            {/* Amount */}
+            <div className="rounded-xl border bg-slate-50 p-6">
+              <p className="text-sm text-muted-foreground mb-2">Mokėtina suma</p>
+              <p className="text-4xl font-bold">{fmt(result.total)} €</p>
+            </div>
 
-          <div>
-            <h2 className="text-xl font-bold mb-4">Valdyti sąskaitą</h2>
+            {/* Condensed invoice info */}
+            <div className="grid gap-4 text-sm">
+              <div className="flex justify-between gap-6 border-b pb-3">
+                <span className="text-muted-foreground">Klientas</span>
+                <span className="font-medium text-right">{customerDisplayName}</span>
+              </div>
 
-            {result.status === "open" && (
-              <form action={createPayment}>
-                <input type="hidden" name="id" value={result.id} />
-                <Button className="flex w-full h-20 gap-2 font-bold bg-green-700 transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer">
-                  <CreditCard className="w-5 h-auto" />
-                  Apmokėti sąskaitą
-                </Button>
-              </form>
-            )}
+              <div className="flex justify-between gap-6 border-b pb-3">
+                <span className="text-muted-foreground">Data</span>
+                <span className="font-medium text-right">{result.date}</span>
+              </div>
 
-            {result.status === "paid" && (
-              <p className="flex gap-2 items-center text-xl font-bold">
-                <Check className="w-8 h-auto bg-green-600 rounded-full text-white p-1" />
-                Sąskaita apmokėta
-              </p>
-            )}
+              {items.length > 0 && (
+                <div className="pt-2">
+                  <p className="text-sm text-muted-foreground mb-3">Trumpa suvestinė</p>
+                  <div className="space-y-2">
+                    {items.slice(0, 3).map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex justify-between gap-4 text-sm"
+                      >
+                        <span className="truncate text-slate-700">
+                          {item.description}
+                        </span>
+                        <span className="shrink-0 font-medium text-slate-900">
+                          {fmt(item.lineTotal)} €
+                        </span>
+                      </div>
+                    ))}
 
-            {result.status === "uncollectible" && (
-              <p className="flex gap-2 items-center text-xl font-bold">
-                <X className="w-8 h-auto bg-red-500 rounded-full text-white p-1" />
-                Neapmokama
-              </p>
-            )}
+                    {items.length > 3 && (
+                      <p className="text-xs text-muted-foreground">
+                        + dar {items.length - 3} poz.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
-            {result.status === "void" && (
-              <p className="flex gap-2 items-center text-xl font-bold">
-                <Circle className="w-8 h-auto bg-zinc-700 rounded-full text-white p-1" />
-                void
-              </p>
-            )}
+            {/* Payment action */}
+            <div className="pt-4">
+              {result.status === "open" && (
+                <form action={createPayment}>
+                  <input type="hidden" name="id" value={result.id} />
+                  <Button className="flex w-full h-14 gap-2 text-base font-bold bg-green-700 transition-all duration-300 hover:scale-[1.01] hover:shadow-md cursor-pointer">
+                    <CreditCard className="w-5 h-auto" />
+                    Apmokėti per Stripe
+                  </Button>
+                </form>
+              )}
+
+              {result.status === "paid" && (
+                <p className="flex gap-3 items-center justify-center text-lg font-bold text-green-700">
+                  <Check className="w-8 h-8 bg-green-600 rounded-full text-white p-1" />
+                  Sąskaita apmokėta
+                </p>
+              )}
+
+              {result.status === "uncollectible" && (
+                <p className="flex gap-3 items-center justify-center text-lg font-bold text-red-600">
+                  <X className="w-8 h-8 bg-red-500 rounded-full text-white p-1" />
+                  Neapmokama
+                </p>
+              )}
+
+              {result.status === "void" && (
+                <p className="flex gap-3 items-center justify-center text-lg font-bold text-zinc-700">
+                  <Circle className="w-8 h-8 bg-zinc-700 rounded-full text-white p-1" />
+                  Anuliuota
+                </p>
+              )}
+            </div>
           </div>
         </div>
-
-        <h2 className="font-bold text-lg mb-4">Kliento / atsiskaitymo detalės</h2>
-
-        <ul className="grid gap-3">
-          <li className="flex gap-4">
-            <strong className="block w-40 shrink-0 font-medium text-sm">
-              Sąskaitos ID
-            </strong>
-            <span>{result.id}</span>
-          </li>
-
-          <li className="flex gap-4">
-            <strong className="block w-40 shrink-0 font-medium text-sm">
-              Sąskaitos data
-            </strong>
-            <span>{new Date(result.createTs).toISOString().split("T")[0]}</span>
-          </li>
-
-          <li className="flex gap-4">
-            <strong className="block w-40 shrink-0 font-medium text-sm">
-              Klientas
-            </strong>
-            <span>{customerDisplayName}</span>
-          </li>
-
-          {result.customerType === "legal" && result.companyCode && (
-            <li className="flex gap-4">
-              <strong className="block w-40 shrink-0 font-medium text-sm">
-                Įmonės kodas
-              </strong>
-              <span>{result.companyCode}</span>
-            </li>
-          )}
-
-          <li className="flex gap-4">
-            <strong className="block w-40 shrink-0 font-medium text-sm">
-              El. paštas
-            </strong>
-            <span>{result.email}</span>
-          </li>
-
-          {result.phone && (
-            <li className="flex gap-4">
-              <strong className="block w-40 shrink-0 font-medium text-sm">
-                Telefonas
-              </strong>
-              <span>{result.phone}</span>
-            </li>
-          )}
-
-          {result.address && (
-            <li className="flex gap-4">
-              <strong className="block w-40 shrink-0 font-medium text-sm">
-                Adresas
-              </strong>
-              <span>{result.address}</span>
-            </li>
-          )}
-        </ul>
       </Container>
     </main>
   );

@@ -14,6 +14,7 @@ import { sendInvoiceEmail } from "@/emails/invoice-created-stripe";
 import type { InvoiceFormData } from "@/data/invoice-types";
 import { sendInvoicePaidEmail } from "@/emails/invoice-paid";
 import { ROBOTO_REGULAR_BASE64 } from "@/lib/roboto-base64";
+import { isValidEmail } from "@/lib/utils";
 
 const stripe = new Stripe(String(process.env.STRIPE_API_SECRET));
 
@@ -377,11 +378,17 @@ export async function sendInvoiceEmailAction(id: number) {
     });
   }
 
+  // Validate email before creating Stripe session
+  const buyerEmail = invoice.buyerEmail || customer.email;
+  if (!buyerEmail || !isValidEmail(buyerEmail)) {
+    throw new Error("Kliento el. pašto adresas nėra nurodytas arba neteisingas. Prašome atnaujinti sąskaitos duomenis.");
+  }
+
   const session = await stripe.checkout.sessions.create({
     line_items: stripeLineItems,
     mode: "payment",
     locale: "lt",
-    customer_email: invoice.buyerEmail || customer.email,
+    customer_email: buyerEmail,
     metadata: { invoiceId: String(id) },
     success_url: `${origin}/invoices/${id}/payment?status=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/invoices/${id}/payment?status=canceled`,

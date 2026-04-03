@@ -10,6 +10,7 @@ import { db } from "@/db";
 import { Invoices, Customers, InvoiceItems, type Status } from "@/db/schema";
 import { revalidatePath } from "next/cache";
 import { sendPaidInvoiceEmailAction } from "./send-email";
+import { isValidEmail } from "@/lib/utils";
 
 const stripe = new Stripe(String(process.env.STRIPE_API_SECRET));
 
@@ -140,6 +141,11 @@ export async function createPayment(formData: FormData) {
 
   if (!invoice) throw new Error("Sąskaita nerasta.");
   if (invoice.status === "paid") redirect(`/invoices/${id}/payment`);
+
+  // Validate email before attempting to create Stripe session
+  if (!invoice.buyerEmail || !isValidEmail(invoice.buyerEmail)) {
+    throw new Error("Kliento el. pašto adresas nėra nurodytas arba neteisingas. Prašome atnaujinti sąskaitos duomenis.");
+  }
 
   // Fetch all related invoice items
   const items = await db

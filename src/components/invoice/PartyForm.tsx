@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PencilIcon, XIcon } from "lucide-react";
+import { isValidEmail } from "@/lib/utils";
 import type { PartyInfo, PersonType } from "@/data/invoice-types";
 
 interface Props {
@@ -177,7 +178,11 @@ export function PartyForm({ title, data, onChange, allowToggleEdit = false }: Pr
               onChange={(e) => update("email", e.target.value)}
               placeholder="jonas@pavyzdys.lt"
               required
+              className={data.email && !isValidEmail(data.email) ? "border-destructive focus-visible:ring-destructive" : ""}
             />
+            {data.email && !isValidEmail(data.email) && (
+              <p className="text-xs text-destructive">Neteisingas el. pašto formatas</p>
+            )}
           </div>
 
           {/* Phone */}

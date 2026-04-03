@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import type { InvoiceFormData } from "@/data/invoice-types";
+import { isValidEmail } from "@/lib/utils";
 
 export async function saveInvoice(form: InvoiceFormData): Promise<{ id: number; dbSaved: boolean }> {
   if (!process.env.DATABASE_URL) {
@@ -24,6 +25,14 @@ async function saveToDb(form: InvoiceFormData): Promise<{ id: number; dbSaved: b
   const { userId, orgId } = await auth();
   if (!userId) {
     throw new Error("User must be authenticated to save an invoice");
+  }
+
+  // Validate emails
+  if (!isValidEmail(form.from.email)) {
+    throw new Error("Pardavėjo el. pašto adresas neteisingas.");
+  }
+  if (!isValidEmail(form.to.email)) {
+    throw new Error("Kliento el. pašto adresas neteisingas.");
   }
 
   const subtotal = form.items.reduce((s, i) => s + i.quantity * i.amount, 0);

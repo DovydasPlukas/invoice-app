@@ -48,7 +48,6 @@ interface Props {
   initialStatus?: Status;
   onBack: () => void;
   onNew: () => void;
-  onDashboard?: () => void;
 }
 
 function partyName(p: InvoiceFormData["from"] | InvoiceFormData["to"]): string {
@@ -62,7 +61,6 @@ export function InvoicePreview({
   initialStatus = "open", 
   onBack, 
   onNew, 
-  onDashboard 
 }: Props) {
   const [isPending, startTransition] = useTransition();
 
@@ -320,10 +318,12 @@ const handleDownload = async () => {
 
         {/* Footer Navigation */}
         <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
-          <Button variant="ghost" onClick={onDashboard || onNew} className="gap-2 cursor-pointer">
-            <ArrowLeftIcon className="size-4" />
-            Grįžti į sąrašą
-          </Button>
+          <Link href="/dashboard">
+            <Button variant="ghost" className="gap-2 cursor-pointer">
+              <ArrowLeftIcon className="size-4" />
+              Grįžti į sąrašą
+            </Button>
+          </Link>
           
           <Button variant="outline" onClick={onNew} className="gap-2 cursor-pointer">
             <PlusIcon className="size-4" />

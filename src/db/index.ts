@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import * as schema from "./schema";
 
 const pool = new Pool({
-  connectionString: process.env.XATA_DATABASE_URL,
+  connectionString: process.env.DATABASE_URL,
   max: 10,
   ssl: { rejectUnauthorized: false },
 });

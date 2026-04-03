@@ -4,7 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import type { InvoiceFormData } from "@/data/invoice-types";
 
 export async function saveInvoice(form: InvoiceFormData): Promise<{ id: number; dbSaved: boolean }> {
-  if (!process.env.XATA_DATABASE_URL) {
+  if (!process.env.DATABASE_URL) {
     return { id: Date.now(), dbSaved: false };
   }
 

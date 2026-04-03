@@ -14,7 +14,11 @@ Using:
 
 [Resend](https://resend.com/) - email API
 
-[xata](https://xata.io/) - cload database
+<del>[xata](https://xata.io/) - cload database </del> (switched to Supabase)
+
+[Supabase](https://supabase.com/) - cload database
+
+[jspdf](https://www.npmjs.com/package/jspdf) - PDF creation
 
 ## 
-Project made by an intern, following [Colby Fayock Invoice App tutorial](https://www.youtube.com/watch?v=Mcw8Mp8PYUE).
+Project made by an intern, following [Colby Fayock Invoice App tutorial](https://www.youtube.com/watch?v=Mcw8Mp8PYUE) as the base of the project.
